@@ -40,8 +40,19 @@ async def test_security_headers_present(client: AsyncClient) -> None:
     assert response.headers.get("X-Content-Type-Options") == "nosniff"
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
-    assert "Content-Security-Policy" in response.headers
+    assert response.headers.get("Content-Security-Policy") == (
+        "default-src 'none'; frame-ancestors 'none'"
+    )
     assert "Permissions-Policy" in response.headers
+
+
+async def test_docs_csp_allows_required_assets(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/docs")
+    assert response.status_code == 200
+    csp = response.headers["Content-Security-Policy"]
+    assert "script-src https://cdn.jsdelivr.net 'unsafe-inline'" in csp
+    assert "style-src https://cdn.jsdelivr.net 'unsafe-inline'" in csp
+    assert "connect-src 'self'" in csp
 
 
 async def test_cors_allows_configured_origin(client: AsyncClient) -> None:
