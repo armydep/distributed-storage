@@ -149,6 +149,17 @@ Configuration is passed via environment variables (see `docker-compose.yml`); ov
 `.env` file in the project root or your shell environment. No production secrets are hardcoded in
 any Docker file — the compose defaults are development-only placeholders.
 
+For development, Compose also seeds one account for each role after migrations:
+
+| Role | Username | Password |
+|---|---|---|
+| User | `user` | `UserPass123` |
+| Admin | `admin` | `AdminPass123` |
+
+The seed is idempotent and refuses to run when `ENVIRONMENT=production`. Override the credentials
+with the `SEED_USER_*` / `SEED_ADMIN_*` variables in `.env`, or set `SEED_DEMO_USERS=false` to
+disable it. Run it manually with `python -m app.scripts.seed_users`.
+
 ## Authentication flow
 
 1. `POST /api/v1/auth/register` — creates a user (`USER` role by default), Argon2-hashes the

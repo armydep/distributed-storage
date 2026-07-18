@@ -35,5 +35,10 @@ asyncio.run(wait_for_db())
 echo "Applying database migrations..."
 alembic upgrade head
 
+if [ "${SEED_DEMO_USERS:-false}" = "true" ]; then
+    echo "Seeding development users..."
+    python -m app.scripts.seed_users
+fi
+
 echo "Starting application..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
