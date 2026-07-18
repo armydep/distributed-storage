@@ -39,6 +39,13 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1}
       MAX_REQUEST_SIZE_BYTES: ${MAX_REQUEST_SIZE_BYTES:-5242880}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-true}
+      SEED_USER_EMAIL: ${SEED_USER_EMAIL:-user@example.com}
+      SEED_USER_USERNAME: ${SEED_USER_USERNAME:-user}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-UserPass123}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-AdminPass123}
     ports:
       - "8000:8000"
     healthcheck:
