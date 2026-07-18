@@ -91,7 +91,14 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(RequestSizeLimitMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    documentation_paths={
+        f"{settings.API_V1_PREFIX}/docs",
+        f"{settings.API_V1_PREFIX}/redoc",
+        f"{settings.API_V1_PREFIX}/docs/oauth2-redirect",
+    },
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
