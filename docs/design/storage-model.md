@@ -129,11 +129,11 @@ Refcount invariants (the data-loss-critical rules, per ADR-0006):
 | `target_file_id` | UUID FK → files, nullable | set when the upload is an overwrite |
 | `declared_name` | TEXT | |
 | `declared_size` | BIGINT | quota headroom was checked against this |
-| `status` | ENUM `pending / uploaded / processing / done / failed` | |
+| `status` | ENUM `pending / processing / done / failed` | transitions defined in `design/upload-download.md` |
 | `failure_reason` | TEXT nullable | |
 | `created_at` / `updated_at` | | |
 
-Swept by the worker: `pending`/`uploaded` sessions older than the staleness window are failed and
+Swept by the worker: `pending`/`processing` sessions older than the staleness window are failed and
 their staging objects deleted.
 
 ### 3.6 `users` (additions to the existing table)
