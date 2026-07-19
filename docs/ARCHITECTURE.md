@@ -45,6 +45,11 @@ flowchart LR
     WORKER -->|verify, copy, delete| S3
 ```
 
+The React SPA appears twice in the diagram on purpose: the **static server** only delivers the
+compiled bundle (`index.html`, JS, CSS) on first visit and plays no further role; the **running
+app** executes entirely in the user's browser and talks directly to the API and MinIO. The SPA is
+fully standalone — own codebase, own container, own origin; the API never renders HTML.
+
 | Component | Role | Decided by |
 |---|---|---|
 | **API service** | The existing FastAPI modular monolith, extended with storage, sharing, quota, and trash modules. Owns all authorization and all metadata writes. | existing platform |
@@ -76,9 +81,19 @@ Decided across [ADR-0004](adr/0004-content-addressed-blob-layout.md),
 
 ### 3.1 Upload (two-phase, asynchronous finalize)
 
-Presigned direct upload ([ADR-0008](adr/0008-presigned-url-data-path.md)) means the API never sees
-the bytes, so hashing/dedup happen after the fact, in the worker
-([ADR-0010](adr/0010-async-upload-finalization.md)):
+**Why staging exists.** After the browser's direct PUT, the bytes are on disk but they are *not
+yet a file* — they sit in the `staging` bucket as unverified quarantine. Three gaps must be
+closed before they become one: (1) no server-side code has seen a single byte (presigned upload
+bypasses the API by design, and clients can't be trusted about size or content), (2) the final
+location `content/<sha256>` literally cannot be known until something reads the bytes and computes
+the hash, and (3) PostgreSQL is the source of truth — with no file/version row, the object does
+not exist as far as the product is concerned. **Finalization** is the checklist that closes those
+gaps: verify size → stream the staged object once (read chunk-by-chunk from MinIO through the
+worker's memory, feeding the hash — never buffering the whole file) → dedup or server-side copy
+into `content/<hash>` → commit metadata + quota in one transaction. It runs in the worker so API
+request latency stays independent of file size ([ADR-0008](adr/0008-presigned-url-data-path.md),
+[ADR-0010](adr/0010-async-upload-finalization.md); a no-staging alternative was evaluated and
+rejected — see the addendum in ADR-0010):
 
 ```mermaid
 sequenceDiagram
@@ -114,9 +129,25 @@ there are no half-uploaded files, only a visible "processing" entry tied to the 
 
 ### 3.2 Download
 
-API authorizes (owner, user-to-user share, or public-link token), then issues a short-lived
-presigned GET with the correct download filename; the browser fetches bytes directly from MinIO.
-Public-link downloads follow the identical path — the link token is the authorization.
+Synchronous — no worker, no queue:
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (SPA or link visitor)
+    participant A as API
+    participant M as MinIO
+
+    B->>A: download file F (session cookie or public-link token)
+    A->>A: authorize: owner / share / valid link? not in trash?
+    A->>A: resolve F → current version → blob hash (PostgreSQL)
+    A->>B: short-lived presigned GET for content/<hash> (+ real filename)
+    B->>M: GET (direct — bytes never pass through the API)
+```
+
+Downloading an old version resolves a different version row to a different hash — otherwise
+identical. The presigned URL expires within minutes, bounding the damage of a leaked URL;
+revoking a share or link prevents any *new* URL from being issued. Public-link downloads follow
+the identical path — the link token is the authorization.
 
 ### 3.3 Overwrite → version
 
