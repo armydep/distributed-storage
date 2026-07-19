@@ -6,7 +6,7 @@
 | Feature | SPA login sessions (PRD §5.8 prerequisite) |
 | ADRs | [0011 separate origins](../adr/0011-separate-origins-cors.md), [0012 httpOnly cookies](../adr/0012-httponly-cookie-session.md) |
 | Depends on | Existing bearer-JWT auth (access + rotating refresh tokens) |
-| Last updated | 2026-07-19 |
+| Last updated | 2026-07-19 (implementation corrections) |
 
 ## 1. Goal
 
@@ -35,14 +35,20 @@ single retry.
 | HttpOnly | yes | yes |
 | Secure | yes | yes |
 | SameSite | `None` (cross-origin SPA → API, per ADR-0011) | `None` |
-| Path | `/api/v1` | `/api/v1/auth/refresh` |
+| Path | `/api/v1` | `/api/v1/auth` |
 | Max-Age | access-token lifetime | refresh-token lifetime |
 | Domain | unset (host-only) | unset (host-only) |
 
 Notes:
 
-- Path-scoping the refresh cookie to the refresh endpoint means the long-lived credential is
-  transmitted on exactly one route — every other request carries only the short-lived access JWT.
+- The refresh cookie's `Path` is scoped to `/api/v1/auth`, not just `/api/v1/auth/refresh` as
+  originally specified — a narrower scope would never be sent to `/auth/logout`, which also needs
+  to read it (browsers match cookie `Path` as a prefix of the request path, so a request to
+  `/auth/logout` does not carry a cookie scoped to `/auth/refresh`). This was caught during
+  implementation planning, before any code shipped with the bug. The long-lived credential is
+  still excluded from every ordinary resource request — it now rides along (harmlessly, since
+  they don't read it) on `/auth/login` and `/auth/register` too, in exchange for actually reaching
+  `/auth/logout`.
 - `SameSite=None` **requires** `Secure`, which is why any non-localhost deployment needs HTTPS on
   all origins (already a hard requirement in ADR-0011). Local development relies on browsers'
   localhost exemption (Secure cookies are accepted on `http://localhost`).
@@ -79,11 +85,23 @@ authenticated via cookie must carry the header `X-CSRF-Protection: 1`.**
 - Enforcement lives in the auth dependency chain (the only place auth decisions are made — never
   middleware), triggered when the resolved credential source is a cookie.
 
+**Login is a special case, added during implementation planning.** The rule above triggers on
+"credential resolved as a cookie" — but `/auth/login` has no prior credential, so the rule never
+fires there by construction, leaving it unprotected. Worse, `/auth/login` is submitted as
+`application/x-www-form-urlencoded`, one of the three CORS-safelisted content types: a cross-site
+form POST is a "simple request" that reaches the server with no preflight and isn't blocked (CORS
+only stops the attacker's JS from *reading* the response, not the request from executing or a
+`Set-Cookie` from being stored). Combined with `SameSite=None`, this is a working login-CSRF
+primitive — an attacker page can silently log a victim into an account the attacker controls.
+**Fix:** `POST /auth/login` with `use_cookies=true` requires the `X-CSRF-Protection: 1` header
+too, checked directly against the `use_cookies` flag rather than against a resolved credential
+source (there isn't one yet).
+
 ## 6. Endpoint changes
 
 | Endpoint | Change |
 |---|---|
-| `POST /auth/login` | New optional request flag `use_cookies` (default `false`). When set: response **sets both cookies** and the body returns the user + access-token expiry — **no raw tokens in the body** (the whole point is that SPA JS never sees them). When unset: exact current behavior. |
+| `POST /auth/login` | New optional request flag `use_cookies` (default `false`). When set: requires the `X-CSRF-Protection` header (see §5's login special case) and response **sets both cookies** and the body returns the user + access-token expiry — **no raw tokens in the body** (the whole point is that SPA JS never sees them). When unset: exact current behavior. |
 | `POST /auth/refresh` | Accepts the refresh token from the `ds_refresh` cookie when no body token is provided. Rotation semantics unchanged (old token revoked, new pair issued); in cookie mode the new pair is set as cookies, body carries expiry only. |
 | `POST /auth/logout` | Accepts the refresh token from the cookie; revokes it as today and clears both cookies. Idempotent, as today. |
 | `GET /users/me` | Unchanged — doubles as the SPA's session-bootstrap probe on page load. |
@@ -156,3 +174,11 @@ persistence anywhere in JS-accessible storage, ever.
 | CSRF mechanism | Custom-header check (`X-CSRF-Protection`) gated by strict CORS | Double-submit cookie (more moving parts than needed given the CORS invariant); server-side synchronizer tokens (stateful, breaks the JWT model) |
 | Cookie contents | Two JWT cookies (access + path-scoped refresh) | Opaque server-side session (new session store + per-request DB read; discards working JWT machinery) |
 | Session continuity | Refresh-on-401 with single-flight retry | Proactive timer refresh (expiry bookkeeping, clock skew, no fewer failure modes) |
+
+Found during implementation planning (not owner decisions — defects, corrected before any code
+shipped with them):
+
+| Finding | Correction |
+|---|---|
+| Refresh cookie `Path=/api/v1/auth/refresh` never reaches `/auth/logout`, which needs to read it | Widened to `Path=/api/v1/auth` (§3) |
+| `/auth/login` has no prior credential, so it fell outside the CSRF rule entirely, and its form-encoded body is a CORS-safelisted "simple request" — a working login-CSRF/session-fixation vector | `use_cookies=true` requires the CSRF header directly, gated on the flag rather than a resolved credential source (§5, §6) |

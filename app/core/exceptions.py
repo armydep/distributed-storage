@@ -43,3 +43,8 @@ class AuthorizationError(AppError):
 class InvalidStateError(AppError):
     status_code = 400
     code = "INVALID_STATE"
+
+
+class CsrfError(AppError):
+    status_code = 403
+    code = "CSRF_HEADER_MISSING"
