@@ -144,6 +144,9 @@ async def test_invalid_access_token_rejected(client: AsyncClient) -> None:
 async def test_missing_access_token_rejected(client: AsyncClient) -> None:
     response = await client.get("/api/v1/users/me")
     assert response.status_code == 401
+    # Routed through our own AuthenticationError (not FastAPI's auto-401) now
+    # that dual transport requires a manual bearer-or-cookie resolution step.
+    assert response.json()["error"]["code"] == "AUTHENTICATION_FAILED"
 
 
 # --- Refresh flow ---------------------------------------------------------

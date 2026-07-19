@@ -102,6 +102,11 @@ class Settings(BaseSettings):
             errors.append("TRUSTED_HOSTS must not contain '*' in production.")
         if any(origin == "*" for origin in self.CORS_ORIGINS):
             errors.append("CORS_ORIGINS must not contain '*' in production.")
+        if not self.CORS_ORIGINS:
+            errors.append(
+                "CORS_ORIGINS must not be empty in production "
+                "(required for cookie-based SPA sessions)."
+            )
         if self.POSTGRES_PASSWORD in {"postgres", "password", ""} and not self.DATABASE_URL:
             errors.append("POSTGRES_PASSWORD must not use an insecure default in production.")
 

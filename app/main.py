@@ -17,6 +17,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.api.router import api_v1_router
 from app.api.routes import health
 from app.core.config import settings
+from app.core.cookies import CSRF_HEADER_NAME
 from app.core.error_handlers import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.db.session import check_database_connection, dispose_engine
@@ -102,9 +103,9 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials="*" not in settings.CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", CSRF_HEADER_NAME],
     expose_headers=["X-Correlation-ID", "X-Process-Time-Ms"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)

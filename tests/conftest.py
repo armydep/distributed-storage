@@ -134,7 +134,11 @@ async def client(
 
     app.dependency_overrides[get_db] = _override_get_db
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+    # https, not http: ASGITransport never makes a real network call (the
+    # scheme is just a string in the ASGI scope), but httpx's cookie jar
+    # enforces Secure-cookie-requires-https-request on resend - an http
+    # base_url would silently drop our Secure auth cookies between requests.
+    async with AsyncClient(transport=transport, base_url="https://testserver") as async_client:
         yield async_client
     app.dependency_overrides.clear()
 
